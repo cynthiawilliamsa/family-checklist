@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cole & Julia's Chore Checklist</title>
+    <title>Chore Checklist</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         /* Custom font for a friendly look */
@@ -52,12 +52,41 @@
             text-decoration: none;
             cursor: pointer;
         }
+ /* Media query for desktop optimization */
+ @media (min-width: 1024px) {
+        .bg-white {
+            max-width: 600px; /* Increase width for larger screens */
+            padding: 32px; /* Add more padding */
+        }
+
+        h1 {
+            font-size: 3rem; /* Increase font size for headings */
+        }
+
+        #newChoreInput,
+        #assigneeSelect {
+            font-size: 1.25rem; /* Adjust input font size */
+        }
+
+        #addChoreBtn,
+        #clearCompletedBtn {
+            font-size: 1.25rem; /* Adjust button font size */
+        }
+
+        /* Force flex container to stack items vertically */
+        .flex {
+            flex-direction: column; /* Change layout to column */
+        }
+
+        .flex > * {
+            margin-bottom: 1rem; /* Add spacing between elements */
+        }
+    }
     </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4">
     <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md border border-gray-200">
         <h1 class="text-4xl font-extrabold text-center text-indigo-700 mb-4">
-            <span class="block">Cole & Julia's</span>
             <span class="block text-3xl mt-1">Chore Checklist</span>
         </h1>
 
@@ -80,11 +109,12 @@
                 <option value="Julia">Julia</option>
             </select>
             <button
-                id="addChoreBtn"
-                class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105"
-            >
-                Add Chore
-            </button>
+            id="addChoreBtn"
+            class="mt-8 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105"
+        >
+            Add Chore
+        </button>
+           
         </div>
 
         <ul id="choreList" class="space-y-4">
@@ -104,221 +134,6 @@
             <p id="modalMessage" class="text-lg text-gray-700"></p>
         </div>
     </div>
-
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-        import { getFirestore, collection, addDoc, updateDoc, deleteDoc, onSnapshot, doc, query, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
-        // Global variables for Firebase
-        let app;
-        let db;
-        let auth;
-        let userId = 'anonymous'; // Default to anonymous
-
-        // Get references to DOM elements
-        const newChoreInput = document.getElementById('newChoreInput');
-        const assigneeSelect = document.getElementById('assigneeSelect'); // New assignee select element
-        const addChoreBtn = document.getElementById('addChoreBtn');
-        const choreList = document.getElementById('choreList');
-        const clearCompletedBtn = document.getElementById('clearCompletedBtn');
-        const userIdDisplay = document.getElementById('userIdDisplay');
-        const loadingIndicator = document.getElementById('loadingIndicator');
-        const messageModal = document.getElementById('messageModal');
-        const modalMessage = document.getElementById('modalMessage');
-        const closeModalBtn = document.getElementById('closeModalBtn');
-
-        // Function to show a message in the modal
-        function showMessage(message) {
-            modalMessage.textContent = message;
-            messageModal.style.display = 'flex';
-        }
-
-        // Close modal button event listener
-        closeModalBtn.addEventListener('click', () => {
-            messageModal.style.display = 'none';
-        });
-
-        // Close modal if clicked outside of content
-        window.addEventListener('click', (event) => {
-            if (event.target == messageModal) {
-                messageModal.style.display = 'none';
-            }
-        });
-
-        // Initialize Firebase and set up authentication
-        async function initializeFirebase() {
-            try {
-                // Initialize Firebase app
-                const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-                app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-
-                // Sign in with custom token if available, otherwise anonymously
-                const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    await signInAnonymously(auth);
-                }
-
-                // Listen for auth state changes
-                onAuthStateChanged(auth, (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        userIdDisplay.textContent = `User ID: ${userId}`;
-                        setupFirestoreListener(); // Set up listener after successful authentication
-                    } else {
-                        userId = 'anonymous';
-                        userIdDisplay.textContent = 'User ID: Not authenticated';
-                    }
-                });
-            } catch (error) {
-                console.error("Error initializing Firebase or authenticating:", error);
-                showMessage("Failed to initialize the app. Please try again later.");
-            }
-        }
-
-        // Function to set up Firestore listener for chores
-        function setupFirestoreListener() {
-            if (!db || !userId || userId === 'anonymous') {
-                console.warn("Firestore not ready or user not authenticated for listener setup.");
-                return;
-            }
-
-            loadingIndicator.classList.remove('hidden'); // Show loading indicator
-
-            // Define the collection path for private user data
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-            const choresCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/chores`);
-            const q = query(choresCollectionRef); // No orderBy to avoid index issues
-
-            onSnapshot(q, (snapshot) => {
-                choreList.innerHTML = ''; // Clear current list
-                const chores = [];
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-                    chores.push({ id: doc.id, ...data });
-                });
-
-                // Sort chores by timestamp client-side
-                chores.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-
-                chores.forEach(chore => {
-                    renderChore(chore);
-                });
-                loadingIndicator.classList.add('hidden'); // Hide loading indicator
-            }, (error) => {
-                console.error("Error fetching chores:", error);
-                showMessage("Failed to load chores. Please refresh the page.");
-                loadingIndicator.classList.add('hidden'); // Hide loading indicator on error
-            });
-        }
-
-        // Function to render a single chore item to the DOM
-        function renderChore(chore) {
-            const listItem = document.createElement('li');
-            listItem.className = `flex items-center bg-gray-50 p-4 rounded-lg shadow-sm border border-gray-100 ${chore.completed ? 'completed-chore' : ''}`;
-
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.checked = chore.completed;
-            checkbox.className = 'form-checkbox h-6 w-6 text-indigo-600 rounded-md focus:ring-indigo-500 transition duration-150 ease-in-out';
-            checkbox.addEventListener('change', async () => {
-                try {
-                    await updateDoc(doc(db, `artifacts/${__app_id}/users/${userId}/chores`, chore.id), {
-                        completed: checkbox.checked
-                    });
-                } catch (e) {
-                    console.error("Error updating chore status:", e);
-                    showMessage("Failed to update chore status.");
-                }
-            });
-
-            const choreSpan = document.createElement('span');
-            choreSpan.className = 'ml-4 text-gray-800 text-lg flex-grow';
-            let choreTextWithAssignee = chore.text;
-            if (chore.assignedTo && chore.assignedTo !== 'Unassigned') {
-                choreTextWithAssignee += ` (Assigned to: ${chore.assignedTo})`;
-            }
-            choreSpan.textContent = choreTextWithAssignee;
-
-            const deleteButton = document.createElement('button');
-            deleteButton.className = 'ml-4 text-red-500 hover:text-red-700 focus:outline-none transition duration-150 ease-in-out';
-            deleteButton.innerHTML = `
-                <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                </svg>
-            `;
-            deleteButton.addEventListener('click', async () => {
-                try {
-                    await deleteDoc(doc(db, `artifacts/${__app_id}/users/${userId}/chores`, chore.id));
-                } catch (e) {
-                    console.error("Error deleting chore:", e);
-                    showMessage("Failed to delete chore.");
-                }
-            });
-
-            listItem.appendChild(checkbox);
-            listItem.appendChild(choreSpan);
-            listItem.appendChild(deleteButton);
-            choreList.appendChild(listItem);
-        }
-
-        // Function to add a new chore
-        addChoreBtn.addEventListener('click', async () => {
-            const choreText = newChoreInput.value.trim();
-            const assignedTo = assigneeSelect.value; // Get selected assignee
-            if (choreText !== "") {
-                try {
-                    await addDoc(collection(db, `artifacts/${__app_id}/users/${userId}/chores`), {
-                        text: choreText,
-                        completed: false,
-                        assignedTo: assignedTo, // Store the assigned person
-                        timestamp: Date.now() // Add a timestamp for ordering
-                    });
-                    newChoreInput.value = '';
-                    assigneeSelect.value = 'Unassigned'; // Reset assignee selection
-                    newChoreInput.focus();
-                } catch (e) {
-                    console.error("Error adding chore:", e);
-                    showMessage("Failed to add chore.");
-                }
-            }
-        });
-
-        // Event listener for "Enter" key press in the input field
-        newChoreInput.addEventListener('keypress', (event) => {
-            if (event.key === 'Enter') {
-                addChoreBtn.click(); // Simulate a click on the add button
-            }
-        });
-
-        // Function to clear all completed chores
-        clearCompletedBtn.addEventListener('click', async () => {
-            try {
-                // Fetch all completed chores to delete them
-                const choresCollectionRef = collection(db, `artifacts/${__app_id}/users/${userId}/chores`);
-                const q = query(choresCollectionRef);
-
-                const snapshot = await getDocs(q);
-                const deletePromises = [];
-                snapshot.forEach(docSnapshot => {
-                    if (docSnapshot.data().completed) {
-                        deletePromises.push(deleteDoc(doc(db, `artifacts/${__app_id}/users/${userId}/chores`, docSnapshot.id)));
-                    }
-                });
-                await Promise.all(deletePromises);
-                showMessage("Completed chores cleared!");
-            } catch (e) {
-                console.error("Error clearing completed chores:", e);
-                showMessage("Failed to clear completed chores.");
-            }
-        });
-
-        // Initialize Firebase when the window loads
-        window.onload = initializeFirebase;
-    </script>
+    <script type="module" src="./firebase-setup.js"></script>
 </body>
 </html>
